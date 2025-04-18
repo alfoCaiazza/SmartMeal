@@ -2,7 +2,10 @@
 .smartmeal
 
 # downloaded data
-src/data/raw
+src/data
 
 # mlflow logs
 mlruns
+
+#experimental notebooks
+rc/scripts/notebooks
