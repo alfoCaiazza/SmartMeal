@@ -139,13 +139,6 @@ def cleaning_pipeline(input_path, output_path):
         print("Dataset loaded successfully!")
         mlflow.log_metric("initial_rows", len(df))
 
-        # Defining pipeline functions
-        text_cleaner = compose_pipeline(
-            clean_pseudo_list,
-            remove_escapes,
-            remove_punctuation
-        )
-
         # Selecting only columns of interest
         usefull_cols = [
             'RecipeId',
@@ -156,12 +149,22 @@ def cleaning_pipeline(input_path, output_path):
         ]
         df = df[usefull_cols]
 
-        # Selectiong textual columns
-        text_columns = df.select_dtypes(include=['object']).columns
-        mlflow.log_param("text_columns", ",".join(text_columns))
+        # Categorizing features
+        pseudo_list_cols = ['Keywords', 'RecipeIngredientParts']
+        other_text_cols = ['Name', 'Description', 'RecipeCategory']
+
+        for col in pseudo_list_cols:
+            df[col] = df[col].apply(clean_pseudo_list)
+
+        # Defining pipeline functions
+        text_cleaner = compose_pipeline(
+            clean_pseudo_list,
+            remove_escapes,
+            remove_punctuation
+        )
 
         print("Initializing and starting cleaning pipeline:")
-        for col in tqdm(text_columns, desc="Cleaning columns"):
+        for col in tqdm(other_text_cols, desc="Cleaning columns"):
             df[col] = df[col].apply(text_cleaner)
 
         # Processing data standardization and extracion
