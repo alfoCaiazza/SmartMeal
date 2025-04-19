@@ -12,6 +12,9 @@ Defining a data cleaning pipeline in order to get the recipes ready for the AI m
 STEP 1: removing 'c()' pattern from specific feature
 STEP 2: removing escape and non alfanumerical chars
 STEP 3: removing punctation chars
+STEP 4: standardizing ingredients
+STEP 5: extracting allergens from recipe ingredients
+STEP 6 creating a unified feature which contains all relevant textual features
 """
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -64,6 +67,56 @@ def remove_punctuation(elem) -> str:
         return elem.translate(translator)
     else:
         return elem
+    
+# STEP 4
+def standardize_ingredients(elem):
+    """
+    Deduplicates and normalizes ingredents inside a list
+    """
+    if isinstance(elem, list):
+        cleaned = set()
+        for ing in elem:
+            ing = ing.lower()
+            ing = re.sub(r'[^a-z0-9 ]', '', ing)  # rimuove simboli
+            ing = re.sub(r'\s+', ' ', ing).strip()  # spazi multipli
+            cleaned.add(ing)
+        return sorted(list(cleaned))
+    return elem
+
+# STEP 5
+ALLERGENS_DICT = {
+    "milk": ["milk", "cheese", "butter", "cream", "yogurt"],
+    "egg": ["egg", "eggs"],
+    "nuts": ["almond", "pecan", "walnut", "cashew", "hazelnut", "nut"],
+    "soy": ["soy", "soy sauce", "tofu"],
+    "gluten": ["flour", "wheat", "bread", "cracker", "pasta", "biscuit", "cake", "noodle"],
+    "fish": ["fish", "salmon", "tuna"],
+    "shellfish": ["shrimp", "lobster", "crab", "clam", "mussel"]
+}
+
+def extract_allergens(ingredients):
+    if isinstance(ingredients, list):
+        found = set()
+        for allergen, keywords in ALLERGENS_DICT.items():
+            for ing in ingredients:
+                if any(kw in ing for kw in keywords):
+                    found.add(allergen)
+        return sorted(list(found))
+    return []
+
+# STEP 6
+def build_unified(row):
+    name = row.get("Name", "").lower()
+    ingredients = row.get("RecipeIngredientParts", [])
+    ingredients_str = ", ".join(ingredients) if isinstance(ingredients, list) else ""
+    category = row.get("RecipeCategory", "").lower()
+    keywords = row.get("Keywords", [])
+    keywords_str = ", ".join(keywords) if isinstance(keywords, list) else ""
+    allergens = row.get("Allergens", [])
+    allergens_str = ", ".join(allergens) if isinstance(allergens, list) else ""
+
+    return f"Recipe: {name}. Ingredients: {ingredients_str}. Category: {category}. Tags: {keywords_str}. Allergens: {allergens_str}."
+
 
 def compose_pipeline(*functions: Callable) -> Callable:
     """
@@ -110,6 +163,14 @@ def cleaning_pipeline(input_path, output_path):
         print("Initializing and starting cleaning pipeline:")
         for col in tqdm(text_columns, desc="Cleaning columns"):
             df[col] = df[col].apply(text_cleaner)
+
+        # Processing data standardization and extracion
+        df["RecipeIngredientParts"] = df["RecipeIngredientParts"].apply(standardize_ingredients)
+
+        df["Allergens"] = df["RecipeIngredientParts"].apply(extract_allergens)
+        mlflow.log_metric("recipes_with_allergens", df["Allergens"].apply(bool).sum())
+
+        df["UnifiedText"] = df.apply(build_unified, axis=1)
 
         df.to_csv(output_path, index=False)
 
