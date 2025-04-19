@@ -8,4 +8,4 @@ src/data
 mlruns
 
 #experimental notebooks
-rc/scripts/notebooks
+src/scripts/notebooks
