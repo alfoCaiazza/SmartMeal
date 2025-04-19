@@ -151,7 +151,7 @@ def cleaning_pipeline(input_path, output_path):
 
         # Categorizing features
         pseudo_list_cols = ['Keywords', 'RecipeIngredientParts']
-        other_text_cols = ['Name', 'Description', 'RecipeCategory']
+        other_text_cols = ['Name', 'RecipeCategory']
 
         for col in pseudo_list_cols:
             df[col] = df[col].apply(clean_pseudo_list)
@@ -168,11 +168,14 @@ def cleaning_pipeline(input_path, output_path):
             df[col] = df[col].apply(text_cleaner)
 
         # Processing data standardization and extracion
+        print("Extracting recipes ingredients")
         df["RecipeIngredientParts"] = df["RecipeIngredientParts"].apply(standardize_ingredients)
 
+        print("Extracting recipes allergens")
         df["Allergens"] = df["RecipeIngredientParts"].apply(extract_allergens)
         mlflow.log_metric("recipes_with_allergens", df["Allergens"].apply(bool).sum())
 
+        print("Creating unified input feature")
         df["UnifiedText"] = df.apply(build_unified, axis=1)
 
         df.to_csv(output_path, index=False)
