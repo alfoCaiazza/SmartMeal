@@ -14,7 +14,6 @@ STEP 2: removing escape and non alfanumerical chars
 STEP 3: removing punctation chars
 STEP 4: standardizing ingredients
 STEP 5: extracting allergens from recipe ingredients
-STEP 6 creating a unified feature which contains all relevant textual features
 """
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -104,20 +103,6 @@ def extract_allergens(ingredients):
         return sorted(list(found))
     return []
 
-# STEP 6
-def build_unified(row):
-    name = row.get("Name", "").lower()
-    ingredients = row.get("RecipeIngredientParts", [])
-    ingredients_str = ", ".join(ingredients) if isinstance(ingredients, list) else ""
-    category = row.get("RecipeCategory", "").lower()
-    keywords = row.get("Keywords", [])
-    keywords_str = ", ".join(keywords) if isinstance(keywords, list) else ""
-    allergens = row.get("Allergens", [])
-    allergens_str = ", ".join(allergens) if isinstance(allergens, list) else ""
-
-    return f"Recipe: {name}. Ingredients: {ingredients_str}. Category: {category}. Tags: {keywords_str}. Allergens: {allergens_str}."
-
-
 def compose_pipeline(*functions: Callable) -> Callable:
     """
     Combines a functions sequence into a single pipeline function
@@ -174,9 +159,6 @@ def cleaning_pipeline(input_path, output_path):
         print("Extracting recipes allergens")
         df["Allergens"] = df["RecipeIngredientParts"].apply(extract_allergens)
         mlflow.log_metric("recipes_with_allergens", df["Allergens"].apply(bool).sum())
-
-        print("Creating unified input feature")
-        df["UnifiedText"] = df.apply(build_unified, axis=1)
 
         df.to_csv(output_path, index=False)
 
