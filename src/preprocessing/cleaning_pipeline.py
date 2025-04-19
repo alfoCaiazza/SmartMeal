@@ -97,7 +97,6 @@ def cleaning_pipeline(input_path, output_path):
         usefull_cols = [
             'RecipeId',
             'Name',
-            'Description',
             'RecipeCategory',
             'Keywords',
             'RecipeIngredientParts'
