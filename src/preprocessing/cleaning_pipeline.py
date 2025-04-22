@@ -12,8 +12,10 @@ Defining a data cleaning pipeline in order to get the recipes ready for the AI m
 STEP 1: removing 'c()' pattern from specific feature
 STEP 2: removing escape and non alfanumerical chars
 STEP 3: removing punctation chars
-STEP 4: standardizing ingredients
-STEP 5: extracting allergens from recipe ingredients
+STEP 4: filling missing values 
+STEP 5: standardizing ingredients
+STEP 6: extracting allergens from recipe ingredients
+STEP 7: creates a unified field for feature embedding
 """
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -68,6 +70,18 @@ def remove_punctuation(elem) -> str:
         return elem
     
 # STEP 4
+def fill_null_fields(df, fields) -> pd.DataFrame:
+    """
+    Replases null values with empty string considering specified columns
+    """
+    df_copy = df.copy()
+
+    for field in fields:
+        df_copy[field] = df_copy[field].fillna("")
+
+    return df_copy
+
+# STEP 5
 def standardize_ingredients(elem):
     """
     Deduplicates and normalizes ingredents inside a list
@@ -82,7 +96,7 @@ def standardize_ingredients(elem):
         return sorted(list(cleaned))
     return elem
 
-# STEP 5
+# STEP 6
 ALLERGENS_DICT = {
     "milk": ["milk", "cheese", "butter", "cream", "yogurt"],
     "egg": ["egg", "eggs"],
@@ -102,6 +116,24 @@ def extract_allergens(ingredients):
                     found.add(allergen)
         return sorted(list(found))
     return []
+
+# STEP 7
+
+def join_features(df, ft1, ft2, new_ft) -> pd.DataFrame:
+    """
+    Merges two columns into a new unified one. If entries are lists it does a joint with ","
+    """
+
+    def join_row(row):
+        f1 = ", ".join(row[ft1]) if isinstance(row[ft1], list) else str(row[ft1])
+        f2 = ", ".join(row[ft2]) if isinstance(row[ft2], list) else str(row[ft2])
+
+        return f"{f1} , {f2}"
+    
+    df_copy = df.copy()
+    df_copy[new_ft] = df_copy.apply(join_row, axis=1)
+
+    return df_copy
 
 def compose_pipeline(*functions: Callable) -> Callable:
     """
@@ -141,24 +173,33 @@ def cleaning_pipeline(input_path, output_path):
         for col in pseudo_list_cols:
             df[col] = df[col].apply(clean_pseudo_list)
 
-        # Defining pipeline functions
+        # Defining pipeline functions (STEP 1, STEP 2, STEP 3)
         text_cleaner = compose_pipeline(
             clean_pseudo_list,
             remove_escapes,
-            remove_punctuation
+            remove_punctuation,
         )
 
         print("Initializing and starting cleaning pipeline:")
         for col in tqdm(other_text_cols, desc="Cleaning columns"):
             df[col] = df[col].apply(text_cleaner)
 
-        # Processing data standardization and extracion
+        # Fill missing values (STEP 4)
+        nulll_features = df.columns[df.isnull().any()].tolist()
+        fill_null_fields(df, nulll_features)
+
+        # Processing data standardization and extracion (STEP 5)
         print("Extracting recipes ingredients")
         df["RecipeIngredientParts"] = df["RecipeIngredientParts"].apply(standardize_ingredients)
 
-        print("Extracting recipes allergens")
+        # STEP 6
+        print("Extracting recipes allergens") 
         df["Allergens"] = df["RecipeIngredientParts"].apply(extract_allergens)
         mlflow.log_metric("recipes_with_allergens", df["Allergens"].apply(bool).sum())
+
+        # STEP 7
+        print("Creating full recipes description")
+        df = join_features(df, 'Keywords', 'RecipeIngredientParts', 'EmbeddingDescription')
 
         df.to_csv(output_path, index=False)
 
