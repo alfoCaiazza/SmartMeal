@@ -67,8 +67,6 @@ def embedding_builder():
             logger.info(f"Saving embeddings in {EMBEDDING_PATH}")
             try:
                 np.save(EMBEDDING_PATH, embeddings)
-                # Insert Embedding into referring dataframe
-                df['RecipeEmbedding'] = embeddings
                 logger.info("Successfully saved embeddings")
             except Exception as e:
                 logger.error(f"ERROR in saving embeddings: {str(e)}")
