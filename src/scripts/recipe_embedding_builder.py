@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_PATH = PROJECT_ROOT / "data" / "processed" / "cleaned_recipes.csv"
-EMBEDDING_PATH = PROJECT_ROOT / "data" / "processed" 
+EMBEDDING_DIR = PROJECT_ROOT / "data" / "processed" / "embeddings"
+MODEL_NAME = "all-MiniLM-L6-v2"
 
 def validate_paths(path):
     if not path.exists():
@@ -25,7 +26,7 @@ def validate_paths(path):
 def embedding_builder():
     try:
         validate_paths(DATA_PATH)
-        validate_paths(EMBEDDING_PATH)
+        validate_paths(EMBEDDING_DIR)
         
         logger.info("Loading dataset...")
         try:
@@ -35,6 +36,9 @@ def embedding_builder():
         except Exception as e:
             logger.error(f"ERROR in loading dataset: {str(e)}")
             raise
+
+        recipe_ids = df['RecipeId'].values
+        texts = df['EmbeddingDescription'].astype(str).tolist()
 
         mlflow.set_tracking_uri("file:./mlruns")
         mlflow.set_experiment("recipe-embedding-generation")
@@ -46,33 +50,34 @@ def embedding_builder():
             
             logger.info("Loading SentenceTransformer model...")
             try:
-                model = SentenceTransformer("all-mpnet-base-v2", device=device)
+                model = SentenceTransformer(MODEL_NAME, device=device)
             except Exception as e:
                 logger.error(f"ERROR in loading model: {str(e)}")
                 raise
 
-            texts = df['EmbeddingDescription'].astype(str).tolist()
-
-            # Creazione degli embeddings
+            # Embeddings generation
             logger.info("Embeddings generation...")
             embeddings = []
-            batch_size = 1024
 
-            for i in tqdm(range(0, len(texts), batch_size), desc="Recipes Embeddings"):
-                batch = texts[i:i+batch_size]
-                emb = model.encode(batch, convert_to_numpy=True, normalize_embeddings=True)
-                embeddings.extend(emb)
+            embeddings = model.encode(texts, batch_size=1024, convert_to_numpy=True, normalize_embeddings=True, show_progress_bar=True)
 
-            # Saving embeddings
-            logger.info(f"Saving embeddings in {EMBEDDING_PATH}")
-            try:
-                np.save(EMBEDDING_PATH, embeddings)
-                logger.info("Successfully saved embeddings")
-            except Exception as e:
-                logger.error(f"ERROR in saving embeddings: {str(e)}")
-                raise
+            # Convert to numpy array
+            embeddings = np.array(embeddings)
 
-            mlflow.log_artifact(EMBEDDING_PATH, artifact_path="recipes_embeddings")
+            # Save to file
+            emb_file = EMBEDDING_DIR / "recipe_embeddings.npy"
+            id_file = EMBEDDING_DIR / "recipe_ids.npy"
+
+            np.save(emb_file, embeddings)
+            np.save(id_file, recipe_ids)
+
+            logger.info(f"Saved embeddings to {emb_file}")
+            logger.info(f"Saved recipe ID mapping to {id_file}")
+
+            mlflow.log_param("embedding_model", MODEL_NAME)
+            mlflow.log_metric("num_embeddings", embeddings.shape[0])
+            mlflow.log_artifact(str(emb_file), artifact_path="embeddings")
+            mlflow.log_artifact(str(id_file), artifact_path="embeddings")
     except Exception as e:
         logger.error(f"CRITIC ERROR during embedding_builder execution: {str(e)}")
         sys.exit(1)
